@@ -1,0 +1,25 @@
+---
+title: "Lab 3s: Connecting a Github rep site with a new RStudio project"
+author: "Marina Duclos"
+format:
+  html:
+    toc: true
+    toc_float: true
+    code-fold: true
+    theme: darkly
+    embed-resources: true
+execute: 
+  warning: false
+  message: false
+---
+
+# About Me
+![Marina Duclos](MDpic.png)
+[Marina Duclos](file:///C:/Users/mmarg/Downloads/Lab7%20(1).html)
+
+
+
+
+
+
+
