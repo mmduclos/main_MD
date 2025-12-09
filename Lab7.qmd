@@ -1,0 +1,352 @@
+---
+title: "Lab 7: Data Tidying Transformation & Visualization with COVID-19 reporting data "
+author: "Marina Duclos"
+format:
+  html:
+    toc: true
+    toc_float: true
+    code-fold: true
+    theme: sketchy
+    embed-resources: true
+execute: 
+  warning: false
+  message: false
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(gganimate)
+library(gifski)
+```
+
+```{r}
+if (!dir.exists("data")) {
+  dir.create("data")
+}
+```
+
+```{r}
+url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
+download.file(url, destfile = "data/time_series_covid19_deaths_global.csv")
+
+```
+
+```{r}
+download.file(
+  url = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv",
+  destfile = "data/time_series_covid19_confirmed_global.csv"
+)
+
+#| eval: false
+```
+
+```{r}
+library(readr)
+library(dplyr)
+
+time_series_confirmed <- read_csv("data/time_series_covid19_confirmed_global.csv") %>%
+  rename(Province_State = "Province/State", Country_Region = "Country/Region")
+```
+
+# Exercise 1: Chapter 5.2.1 Exercises
+
+## Question 1
+
+For each of the sample tables, describe what each observation and each column represents.
+
+### Table 1
+
+The observations represent one country in one year.
+
+The columns:
+
+country → name of the country
+
+year → the year of the observation was made
+
+cases → \# of TB cases
+
+population → population of the country that year
+
+### Table 2
+
+The observations represent one measurement for one country in one year, could be cases or populations
+
+The columns:
+
+country → name of the country
+
+year → the year of the observation was made
+
+type → the type of measurment made such as cases or population
+
+count → value of measurement
+
+### Table 3
+
+The observations represent one country in one year.
+
+The columns:
+
+country → name of the country
+
+year → the year of the observation was made
+
+rate → string combining cases & population
+
+## Question 2
+
+Sketch out the process you’d use to calculate the rate for table2 and table3. You will need to perform four operations:
+
+a.  Extract the number of TB cases per country per year.
+b.  Extract the matching population per country per year.
+c.  Divide cases by population, and multiply by 10000.
+d.  Store back in the appropriate place.
+
+### Table 2.
+
+```{r}
+cases <- table2 |> filter(type == "cases")
+population <- table2 |> filter(type == "population")
+
+joined <- left_join(cases, population, by = c("country", "year"), suffix = c("_cases", "_pop"))
+
+joined |> mutate(rate = count_cases / count_pop * 10000)
+
+```
+
+### Table 3
+
+```{r}
+table3 |> 
+  separate(rate, into = c("cases", "population"), sep = "/") |> 
+  mutate(
+    cases = as.numeric(cases),
+    population = as.numeric(population),
+    rate = cases / population * 10000
+  )
+```
+
+# Exercise 2
+
+Instead of making a graph of 5 countries on the same graph as in the above example, use facet_wrap with scales="free_y".
+
+```{r}
+titime_series_confirmed <- read_csv("data/time_series_covid19_confirmed_global.csv") %>%
+  rename(Province_State = `Province/State`, Country_Region = `Country/Region`)
+```
+
+```{r}
+time_series_confirmed_long <- time_series_confirmed %>%
+  pivot_longer(
+    cols = matches("^\\d"),  # selects all date columns
+    names_to = "Date",       # new column for date names
+    values_to = "Confirmed"  # new column for case counts
+  ) %>%
+  mutate(Date = mdy(Date))   # convert date strings to Date format
+
+```
+
+```{r}
+# Step 1: Read and tidy the confirmed cases data
+time_series_confirmed <- read_csv("data/time_series_covid19_confirmed_global.csv") %>%
+  rename(Province_State = `Province/State`, Country_Region = `Country/Region`)
+
+# Step 2: Reshape to long format and convert date
+time_series_confirmed_long <- time_series_confirmed %>%
+  pivot_longer(
+    cols = matches("^\\d"),  # selects all date columns
+    names_to = "Date",
+    values_to = "Confirmed"
+  ) %>%
+  mutate(Date = mdy(Date))
+
+# Step 3: Calculate daily confirmed cases
+time_series_confirmed_long_daily <- time_series_confirmed_long %>%
+  group_by(Country_Region, Date) %>%
+  summarise(confirmed = sum(Confirmed), .groups = "drop") %>%
+  arrange(Country_Region, Date) %>%
+  group_by(Country_Region) %>%
+  mutate(Daily = confirmed - lag(confirmed, default = 0))
+
+# Step 4: Plot using facet_wrap with free y-axis
+countries_to_plot <- c("China", "France", "Italy", "Korea, South", "US")
+
+time_series_confirmed_long_daily %>%
+  filter(Country_Region %in% countries_to_plot) %>%
+  ggplot(aes(x = Date, y = Daily)) +
+  geom_line(color = "steelblue") +
+  facet_wrap(~ Country_Region, scales = "free_y") +
+  labs(
+    title = "Daily COVID-19 Confirmed Cases by Country",
+    x = "Date",
+    y = "Daily Confirmed Cases"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+# Exercise 3
+
+Using the daily count of confirmed cases, make a single graph with 5 countries of your choosing.
+
+```{r}
+selected_countries <- c("US", "India", "Brazil", "Italy", "Korea, South")
+
+time_series_confirmed_long_daily %>%
+  filter(Country_Region %in% selected_countries) %>%
+  ggplot(aes(x = Date, y = Daily, color = Country_Region)) +
+  geom_line(size = 1) +
+  labs(
+    title = "Daily COVID-19 Confirmed Cases",
+    x = "Date",
+    y = "Daily Confirmed Cases",
+    color = "Country"
+  ) +
+  theme_minimal()
+```
+
+# Exercise 4
+
+Plot the cumulative deaths in the US, Canada and Mexico (you will need to download time_series_covid19_deaths_global.csv)
+
+```{r}
+# Step 1: Download the deaths dataset
+if (!dir.exists("data")) dir.create("data")
+
+download.file(
+  url = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv",
+  destfile = "data/time_series_covid19_deaths_global.csv"
+)
+
+# Step 2: Read and tidy the data
+library(readr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+
+time_series_deaths <- read_csv("data/time_series_covid19_deaths_global.csv") %>%
+  rename(Province_State = `Province/State`, Country_Region = `Country/Region`) %>%
+  pivot_longer(
+    cols = matches("^\\d"),  # selects all date columns
+    names_to = "Date",
+    values_to = "Deaths"
+  ) %>%
+  mutate(Date = mdy(Date))
+
+# Step 3: Aggregate cumulative deaths by country and date
+deaths_summary <- time_series_deaths %>%
+  group_by(Country_Region, Date) %>%
+  summarise(deaths = sum(Deaths), .groups = "drop")
+
+# Step 4: Plot cumulative deaths for US, Canada, and Mexico
+selected_countries <- c("US", "Canada", "Mexico")
+
+deaths_summary %>%
+  filter(Country_Region %in% selected_countries) %>%
+  ggplot(aes(x = Date, y = deaths, color = Country_Region)) +
+  geom_line(size = 1) +
+  labs(
+    title = "Cumulative COVID-19 Deaths",
+    x = "Date",
+    y = "Total Deaths",
+    color = "Country"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+# Exercise 5
+
+Make a graph with the countries of your choice using the daily deaths data
+
+```{r}
+if (!dir.exists("data")) dir.create("data")
+
+download.file(
+  url = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv",
+  destfile = "data/time_series_covid19_deaths_global.csv"
+)
+
+time_series_deaths <- readr::read_csv("data/time_series_covid19_deaths_global.csv") %>%
+  dplyr::rename(Province_State = `Province/State`, Country_Region = `Country/Region`) %>%
+  tidyr::pivot_longer(
+    cols = tidyselect::matches("^\\d"),
+    names_to = "Date",
+    values_to = "Deaths"
+  ) %>%
+  dplyr::mutate(Date = lubridate::mdy(Date))
+
+daily_deaths <- time_series_deaths %>%
+  dplyr::group_by(Country_Region, Date) %>%
+  dplyr::summarise(deaths = sum(Deaths), .groups = "drop") %>%
+  dplyr::arrange(Country_Region, Date) %>%
+  dplyr::group_by(Country_Region) %>%
+  dplyr::mutate(Daily_Deaths = deaths - dplyr::lag(deaths, default = 0))
+
+selected_countries <- c("US", "Brazil", "India", "Italy", "South Africa")
+
+daily_deaths %>%
+  dplyr::filter(Country_Region %in% selected_countries) %>%
+  ggplot2::ggplot(aes(x = Date, y = Daily_Deaths, color = Country_Region)) +
+  ggplot2::geom_line(size = 1) +
+  ggplot2::labs(
+    title = "Daily COVID-19 Deaths",
+    x = "Date",
+    y = "Daily Deaths",
+    color = "Country"
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+# Exercise 6
+
+Make an animation of your choosing (do not use a graph with geom_smooth)
+
+
+```{r}
+library(gganimate)
+library(ggplot2)
+library(dplyr)
+library(gifski)
+```
+
+```{r}
+time_series_deaths_confirmed <- read_csv("data/time_series_covid19_deaths_global.csv")|>
+  rename(Province_State = "Province/State", Country_Region = "Country/Region")
+
+time_series_deaths_long <- time_series_deaths_confirmed |> 
+    pivot_longer(-c(Province_State, Country_Region, Lat, Long),
+        names_to = "Date", values_to = "Confirmed") 
+
+time_series_deaths_long$Date <- mdy(time_series_deaths_long$Date)
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p <- time_series_deaths_long |>
+  filter(Country_Region %in% c("US", "India", "Japan", "France", "Australia", "South Africa", "Argentina", "Italy", "Spain", "Russia")) |>
+  ggplot(aes(x = Country_Region, y = Confirmed, color = Country_Region)) +
+  geom_point(aes(size = Confirmed)) +
+  transition_time(Date) +
+  labs(title = "COVID-19 Confirmed Cases Over Time: {frame_time}") +
+  ylab("Confirmed Cases") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+animate(p, renderer = gifski_renderer(), end_pause = 15)
+
+```
+
+
+

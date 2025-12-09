@@ -1,0 +1,168 @@
+---
+title: "Lab 13: Creating a detailed report with explanations from the NEON MAG data"
+author: "Marina Duclos"
+format:
+  html:
+    toc: true
+    toc_float: true
+    code-fold: true
+    theme: modern
+    embed-resources: true
+execute: 
+  warning: false
+  message: false
+---
+
+```{r}
+library(tidyverse)
+library(vegan)
+
+data <- read_csv("NEON_soilMAGs_soilChem (1).csv")
+```
+
+# Canonical Correspondance Analysis (CCA) & Variance Paritioning
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(vegan)
+library(pheatmap)
+
+# Load data
+data <- read_csv("NEON_soilMAGs_soilChem (1).csv")
+
+# Create phylum-level abundance matrix
+taxa_matrix <- data %>%
+  filter(!is.na(phylum)) %>%
+  count(genomicsSampleID, phylum) %>%
+  pivot_wider(names_from = phylum, values_from = n, values_fill = 0)
+
+# Select environmental variables
+env_data <- data %>%
+  select(genomicsSampleID, soilMoisture, soilTemp, soilInWaterpH, soilInCaClpH, elevation) %>%
+  distinct()
+
+# Join and format
+merged <- inner_join(env_data, taxa_matrix, by = "genomicsSampleID")
+rownames(merged) <- merged$genomicsSampleID
+
+# Split into environmental and taxonomic data
+env <- merged %>% select(soilMoisture, soilTemp, soilInWaterpH, soilInCaClpH, elevation)
+taxa <- merged %>% select(-genomicsSampleID, -soilMoisture, -soilTemp, -soilInWaterpH, -soilInCaClpH, -elevation)
+
+# Ensure numeric and complete data
+taxa <- taxa %>% mutate(across(everything(), as.numeric))
+complete_rows <- complete.cases(env) & complete.cases(taxa)
+env <- env[complete_rows, ]
+taxa <- taxa[complete_rows, ]
+
+# Match rownames
+common_ids <- intersect(rownames(env), rownames(taxa))
+env <- env[common_ids, ]
+taxa <- taxa[common_ids, ]
+
+# Run CCA
+cca_result <- cca(taxa ~ soilMoisture + soilTemp + soilInWaterpH + soilInCaClpH + elevation, data = env)
+
+# Plot CCA biplot
+plot(cca_result, main = "CCA: Taxonomic Composition vs. Soil Chemistry")
+
+# Add environmental vectors
+envfit_result <- envfit(cca_result, env, permutations = 999)
+plot(cca_result)
+plot(envfit_result, p.max = 0.05, col = "blue")
+
+# Test significance
+anova(cca_result)              # Overall model
+anova(cca_result, by = "term") # Individual variables
+
+# Variance partitioning: split into two explanatory tables
+chemistry <- env %>% select(soilMoisture, soilTemp)
+pH_elevation <- env %>% select(soilInWaterpH, soilInCaClpH, elevation)
+
+varpart_result <- varpart(taxa, chemistry, pH_elevation)
+plot(varpart_result, cutoff = 0.01,
+     bg = c("lightblue", "lightgreen", "lightpink", "lightgray"))
+
+# Correlation heatmap of taxa vs. environment
+taxa_scaled <- decostand(taxa, method = "hellinger")
+cor_matrix <- cor(taxa_scaled, env)
+pheatmap(cor_matrix, cluster_rows = TRUE, cluster_cols = TRUE, display_numbers = TRUE)
+```
+
+
+## Exercise 3
+
+### Alpha Diversity Metrics 
+
+```{r}
+# Compute alpha diversity metrics
+diversity_data <- taxa %>%
+  mutate(shannon = diversity(., index = "shannon"),
+         simpson = diversity(., index = "simpson"),
+         richness = specnumber(.))
+
+# Combine with environmental data
+div_summary <- bind_cols(env[rownames(diversity_data), ], diversity_data)
+```
+
+### Beta Diversity (NMDS)
+
+```{r}
+# Run NMDS
+nmds_result <- metaMDS(taxa, distance = "bray", k = 2, trymax = 100)
+plot(nmds_result, main = "NMDS: Beta Diversity")
+```
+
+### Environmental Gradient Overlay
+
+```{r}
+# Fit environmental vectors to NMDS
+nmds_envfit <- envfit(nmds_result, env, permutations = 999)
+plot(nmds_result)
+plot(nmds_envfit, p.max = 0.05, col = "darkgreen")
+```
+
+
+
+## Exercise 4
+
+### Shanon Diversity
+
+Measures both richness and evenness of taxa in a sample. Higher values indicate more diverse communities
+
+
+### Simpson Diversity 
+
+Emphasizes dominance; lower values suggest one or few taxa dominate the community
+
+
+### Richness
+
+Counts the number of unique taxa present in a sample — a simple measure of biodiversity
+
+### Canonical Correspondence Analysis (CCA)
+
+An ordination method that relates community composition to environmental gradients using constrained axes
+
+
+### Non-metric Multidimensional Scaling (NMDS)
+
+An unconstrained ordination method that visualizes community similarity based on dissimilarity matrices like Bray-Curtis
+
+### Envit 
+
+Projects environmental variables as vectors onto ordination plots, showing direction and strength of influence
+
+### Variance Partitioning (varpart)
+
+Partitions variation in community composition across multiple environmental subsets to assess their relative contributions
+
+
+
+
+
+
+
+
+

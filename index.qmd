@@ -15,9 +15,9 @@ execute:
 
 # About Me
 ![Marina Duclos](MDpic.png)
-[Marina Duclos](file:///C:/Users/mmarg/Downloads/Lab7%20(1).html)
+[Lab7](Lab7.html)
 
-
+[lab13](lab13.html)
 
 
 
